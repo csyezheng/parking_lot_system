@@ -1,6 +1,6 @@
 # serializers.py
 from rest_framework import serializers
-from .models import ParkingLot, ParkingTransaction, ParkingHistory, HourlyOccupancy, MonthlyRevenue
+from .models import ParkingLot, ParkingTransaction, ParkingHistory, HourlyOccupancy, ParkingHistory
 
 
 class SummarySerializer(serializers.Serializer):
@@ -18,5 +18,5 @@ class RevenueBarSerializer(serializers.ModelSerializer):
     lotName = serializers.CharField(source='parking_lot.name')
 
     class Meta:
-        model = MonthlyRevenue
+        model = ParkingHistory
         fields = ['lotName', 'total_revenue']

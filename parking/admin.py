@@ -1,6 +1,6 @@
 # admin.py
 from django.contrib import admin
-from .models import ParkingLot, ParkingTransaction, MonthlyRevenue
+from .models import ParkingLot, ParkingTransaction, ParkingHistory
 
 
 class ParkingLotAdmin(admin.ModelAdmin):
@@ -14,13 +14,13 @@ class ParkingTransactionAdmin(admin.ModelAdmin):
     search_fields = ('license_plate',)
 
 
-class MonthlyRevenueAdmin(admin.ModelAdmin):
-    list_display = ('parking_lot', 'month', 'total_revenue')
-    list_filter = ('month', 'parking_lot')
+class ParkingHistoryAdmin(admin.ModelAdmin):
+    list_display = ('parking_lot', 'date', 'occupancy_rate', 'total_revenue')
+    list_filter = ('parking_lot', 'date',)
     search_fields = ('parking_lot__name',)
 
 
 # Register the models with the admin site
 admin.site.register(ParkingLot, ParkingLotAdmin)
 admin.site.register(ParkingTransaction, ParkingTransactionAdmin)
-admin.site.register(MonthlyRevenue, MonthlyRevenueAdmin)
+admin.site.register(ParkingHistory, ParkingHistoryAdmin)
