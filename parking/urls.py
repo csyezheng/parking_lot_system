@@ -2,7 +2,8 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (ParkingLotListView, SummaryView, RevenueLineView, RevenueBarView,
                     HistoricalOccupancyView, PeakHoursView, RevenueView, MonthlyRevenueView,
-                    BatchImportParkingHistoryView, generate_excel_template)
+                    BatchImportParkingHistoryView, generate_parking_history_excel_template,
+                    BatchImportParkingTransactionView, generate_parking_transaction_excel_template)
 
 urlpatterns = [
     path('summary/', SummaryView.as_view(), name='summary'),
@@ -16,5 +17,8 @@ urlpatterns = [
     path('parking-lot/<int:pk>/monthly-revenue/', MonthlyRevenueView.as_view(), name='parking-lot-monthly-revenue'),
 
     path('parking-history/import/', BatchImportParkingHistoryView.as_view(), name='batch_import_parking_history'),
-    path('parking-history/template/', generate_excel_template, name='generate_excel_template'),
+    path('parking-history/template/', generate_parking_history_excel_template, name='generate_parking_history_excel_template'),
+
+    path('parking-transaction/import/', BatchImportParkingTransactionView.as_view(), name='batch_import_parking_transaction'),
+    path('parking-transaction/template/', generate_parking_transaction_excel_template, name='generate_parking_transaction_excel_template'),
 ]

@@ -3,7 +3,7 @@ import datetime
 import io
 import logging
 from django.db.models import Sum, Count
-from django.utils.dateparse import parse_date
+from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -12,6 +12,7 @@ from .serializers import (SummarySerializer, RevenueLineSerializer, RevenueBarSe
                           ParkingLotDetailSerializer)
 from django.db.models.functions import TruncMonth
 from django.http import HttpResponse
+import pandas as pd
 import openpyxl
 from openpyxl.utils import get_column_letter
 
@@ -188,7 +189,7 @@ class BatchImportParkingHistoryView(APIView):
         except Exception as e:
             return Response({'error': f"Error processing file: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
-def generate_excel_template(request):
+def generate_parking_history_excel_template(request):
     # Create an Excel workbook and sheet
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -205,6 +206,55 @@ def generate_excel_template(request):
     # Set the content type to 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     response['Content-Disposition'] = 'attachment; filename=parking_history_template.xlsx'
+
+    # Save the workbook to the response
+    wb.save(response)
+
+    return response
+
+
+class BatchImportParkingTransactionView(APIView):
+    def post(self, request):
+        file = request.FILES.get('file')
+        if not file:
+            return Response({"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            df = pd.read_excel(file)
+            transactions = []
+            for _, row in df.iterrows():
+                lot_name = row['Parking Lot']
+                lot = ParkingLot.objects.get(name=lot_name)
+                transactions.append(ParkingTransaction(
+                    parking_lot=lot,
+                    license_plate=row['License Plate'],
+                    entry_time=parse_datetime(row['Entry Time']),
+                    exit_time=parse_datetime(row['Exit Time']),
+                    revenue=row['Revenue']
+                ))
+            ParkingTransaction.objects.bulk_create(transactions)
+            return Response({"status": "success"}, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+def generate_parking_transaction_excel_template(request):
+    # Create an Excel workbook and sheet
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Parking Transaction Template"
+
+    # Define the headers that match your ParkingTransaction model
+    headers = ["Parking Lot", "License Plate", "Entry Time", "Exit Time", "Revenue"]
+
+    # Add headers to the first row
+    for col_num, header in enumerate(headers, 1):
+        col_letter = get_column_letter(col_num)
+        ws[f"{col_letter}1"] = header
+
+    # Set the content type to 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = 'attachment; filename=parking_transaction_template.xlsx'
 
     # Save the workbook to the response
     wb.save(response)
