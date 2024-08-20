@@ -31,10 +31,11 @@ class ParkingHistory(models.Model):
 
 
 class HourlyOccupancy(models.Model):
+    parking_lot = models.ForeignKey(ParkingLot, on_delete=models.CASCADE)
     date = models.DateField()
     hour = models.TimeField()
     occupancy_rate = models.DecimalField(max_digits=5, decimal_places=2)
 
     def __str__(self):
-        return f"{self.date} {self.hour} - Occupancy: {self.occupancy_rate}%"
+        return f"{self.parking_lot.name} - {self.date} {self.hour} - Occupancy: {self.occupancy_rate}%"
 

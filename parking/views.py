@@ -1,23 +1,80 @@
 # views.py
 import datetime
 import io
+import logging
 from django.db.models import Sum, Count
+from django.utils.dateparse import parse_date
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from .models import ParkingLot, ParkingTransaction, ParkingHistory
-from .serializers import SummarySerializer, RevenueLineSerializer, RevenueBarSerializer
+from .models import ParkingLot, ParkingTransaction, ParkingHistory, HourlyOccupancy
+from .serializers import (SummarySerializer, RevenueLineSerializer, RevenueBarSerializer, ParkingLotSerializer,
+                          ParkingLotDetailSerializer)
 from django.db.models.functions import TruncMonth
 from django.http import HttpResponse
 import openpyxl
 from openpyxl.utils import get_column_letter
 
 
+class ParkingLotListView(APIView):
+    def get(self, request):
+        parking_lots = ParkingLot.objects.all()
+        serializer = ParkingLotSerializer(parking_lots, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class HistoricalOccupancyView(APIView):
+    def get(self, request, pk):
+        selected_month = request.query_params.get('month')
+        date = datetime.datetime.strptime(selected_month, "%Y-%m")
+        occupancy_data = ParkingHistory.objects.filter(
+            parking_lot_id=pk,
+            date__year=date.year,
+            date__month=date.month,
+        ).values('date', 'occupancy_rate')
+
+        return Response(occupancy_data, status=status.HTTP_200_OK)
+
+
+class PeakHoursView(APIView):
+    def get(self, request, pk):
+        selected_date = request.query_params.get('date')
+        peak_hours_data = HourlyOccupancy.objects.filter(
+            parking_lot_id=pk,
+            date=parse_date(selected_date) if selected_date else None
+        ).values('hour', 'occupancy_rate')
+
+        return Response(peak_hours_data, status=status.HTTP_200_OK)
+
+
+class RevenueView(APIView):
+    def get(self, request, pk):
+        selected_month = request.query_params.get('month')
+        date = datetime.datetime.strptime(selected_month, "%Y-%m")
+        revenue_data = ParkingHistory.objects.filter(
+            parking_lot_id=pk,
+            date__year=date.year,
+            date__month=date.month,
+        ).values('date', 'total_revenue')
+
+        return Response(revenue_data, status=status.HTTP_200_OK)
+
+
+class MonthlyRevenueView(APIView):
+    def get(self, request, pk):
+        selected_year = request.query_params.get('year')
+        monthly_revenue_data = ParkingHistory.objects.filter(
+            parking_lot_id=pk,
+            date__year=selected_year if selected_year else None
+        ).annotate(month=TruncMonth('date')).values('month').annotate(total_revenue=Sum('total_revenue')).values('month', 'total_revenue')
+
+        return Response(monthly_revenue_data, status=status.HTTP_200_OK)
+
 
 
 class SummaryView(APIView):
     def get(self, request):
-        total_revenue = ParkingTransaction.objects.aggregate(totalRevenue=Sum('revenue'))['totalRevenue'] or 0
+        total_revenue = ParkingHistory.objects.aggregate(totalRevenue=Sum('total_revenue'))['totalRevenue'] or 0
         total_lots = ParkingLot.objects.count()
         total_capacity = ParkingLot.objects.aggregate(totalCapacity=Sum('capacity'))['totalCapacity'] or 0
 
@@ -32,30 +89,61 @@ class SummaryView(APIView):
 
 class RevenueLineView(APIView):
     def get(self, request):
-        # Aggregate revenue by month
-        revenue_data = ParkingTransaction.objects.annotate(month=TruncMonth('entry_time')).values('month').annotate(revenue=Sum('revenue')).order_by('month')
-        serializer = RevenueLineSerializer(revenue_data, many=True)
-        return Response(serializer.data)
+        try:
+            # Aggregate monthly revenue data
+            revenue_data = (
+                ParkingHistory.objects
+                .values('date__month', 'date__year')
+                .annotate(monthly_revenue=Sum('total_revenue'))
+                .order_by('date__year', 'date__month')
+            )
+
+            # Prepare the data for the response
+            response_data = []
+            for entry in revenue_data:
+                month_year = datetime.date(entry['date__year'], entry['date__month'], 1).strftime('%B %Y')
+                response_data.append({
+                    'month': month_year,
+                    'revenue': entry['monthly_revenue']
+                })
+
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class RevenueBarView(APIView):
     def get(self, request):
-        # Get the most recent month available in the MonthlyRevenue table
-        latest_month_record = ParkingHistory.objects.order_by('-date').first()
+        try:
+            # Get the month and year from the request query parameters
+            month = request.query_params.get('month')
+            year = request.query_params.get('year')
 
-        if not latest_month_record:
-            return Response({'detail': 'No revenue data available'}, status=404)
+            if not month or not year:
+                return Response({'error': 'Month and year are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        latest_month = latest_month_record.month
+            # Filter the ParkingHistory records for the selected month and year
+            revenue_data = (
+                ParkingHistory.objects
+                .filter(date__year=year, date__month=month)
+                .values('parking_lot__name')
+                .annotate(monthly_revenue=Sum('total_revenue'))
+                .order_by('parking_lot__name')
+            )
 
-        # Filter revenue data for the latest month
-        revenue_data = ParkingHistory.objects.filter(month=latest_month).values('parking_lot__name').annotate(total_revenue=Sum('total_revenue'))
+            # Prepare the data for the response
+            response_data = []
+            for entry in revenue_data:
+                response_data.append({
+                    'lotName': entry['parking_lot__name'],
+                    'revenue': entry['monthly_revenue']
+                })
 
-        if not revenue_data:
-            return Response({'detail': 'No revenue data available for the latest month'}, status=404)
+            return Response(response_data, status=status.HTTP_200_OK)
 
-        serializer = RevenueBarSerializer(revenue_data, many=True)
-        return Response(serializer.data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 class BatchImportParkingHistoryView(APIView):
     def post(self, request):

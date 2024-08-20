@@ -20,3 +20,17 @@ class RevenueBarSerializer(serializers.ModelSerializer):
     class Meta:
         model = ParkingHistory
         fields = ['lotName', 'total_revenue']
+
+
+class ParkingLotSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ParkingLot
+        fields = ['id', 'name', 'capacity']
+
+
+class ParkingLotDetailSerializer(serializers.Serializer):
+    summary = serializers.DictField()
+    historicalOccupancy = serializers.ListField()
+    peakHours = serializers.ListField()
+    revenueData = serializers.ListField()
+    monthlyRevenueData = serializers.ListField()
